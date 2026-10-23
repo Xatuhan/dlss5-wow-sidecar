@@ -93,15 +93,15 @@ TEST_CASE("Neural runtime probe warns when the runtime is absent", "[unit]") {
   std::filesystem::remove_all(dir);
 }
 
-// An unrecognised digest is amber, never red: the operator may legitimately
-// have a newer build than the manifest knows. But the message has to name the
-// digest, or they cannot tell us which build it was.
-TEST_CASE("Neural runtime probe reports an unknown build as amber with its digest",
+// An unrecognised digest is red: the overlay refuses to map native code the
+// manifest does not know. The message still has to name the digest, or nobody
+// can tell which build it was.
+TEST_CASE("Neural runtime probe reports an unknown build as red with its digest",
           "[unit]") {
   const auto dir = ProbeScratchDir("unknown");
   WriteFile(dir / "nvngx_dlssnr.dll", "not really a runtime");
   const auto r = ProbeNeuralRuntime(dir);
-  CHECK(r.state == ProbeState::Warn);
+  CHECK(r.state == ProbeState::Fail);
   CHECK(r.remedy.empty() == false);
   // "not really a runtime" hashed with SHA-256.
   CHECK(r.detail.find(Sha256Hex("not really a runtime")) != std::string::npos);
@@ -123,11 +123,11 @@ TEST_CASE("Neural runtime verdict accepts a known build and names its version",
   CHECK(r.remedy.empty());
 }
 
-TEST_CASE("Neural runtime verdict warns, with the digest, on an unknown build",
+TEST_CASE("Neural runtime verdict refuses, with the digest, an unknown build",
           "[unit]") {
   const std::string digest(64, 'c');
   const auto r = NeuralRuntimeVerdict("nvngx_dlssnr.dll", digest, GpuArch::Blackwell);
-  CHECK(r.state == ProbeState::Warn);
+  CHECK(r.state == ProbeState::Fail);
   CHECK(r.detail.find(digest) != std::string::npos);
   CHECK(r.remedy.empty() == false);
 }

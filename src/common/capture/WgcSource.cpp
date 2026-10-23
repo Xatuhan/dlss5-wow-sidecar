@@ -9,6 +9,8 @@
 #include <d3d11_4.h>
 #include <wrl/client.h>
 
+#include <mutex>
+
 #include "gpu/DeviceBridge.h"
 
 using Microsoft::WRL::ComPtr;
@@ -26,6 +28,15 @@ struct WgcSource::Impl {
   DeviceBridge* bridge = nullptr;
   WgcSource::DropCallback onDrop;
   WgcSource* owner = nullptr;
+
+  // Frames arrive on a pool thread. Revoking the handler stops new deliveries
+  // but does not wait for one already running, so without this a frame landing
+  // during Stop() could touch the bridge and the owner after both were gone.
+  // The handler holds the mutex for its whole body and checks `stopped` first;
+  // Stop() takes the same mutex to set it, so once Stop() has it no handler is
+  // mid-flight and none that starts later will do anything.
+  std::mutex mutex;
+  bool stopped = false;
 };
 
 namespace {
@@ -66,7 +77,7 @@ std::unique_ptr<WgcSource> WgcSource::CreateForWindow(HWND target,
 
   std::unique_ptr<WgcSource> s(new WgcSource());
   s->target_ = target;
-  s->impl_ = std::make_unique<Impl>();
+  s->impl_ = std::make_shared<Impl>();
   s->impl_->owner = s.get();
   s->impl_->bridge = &bridge;
   s->impl_->onDrop = std::move(onDrop);
@@ -79,19 +90,30 @@ std::unique_ptr<WgcSource> WgcSource::CreateForWindow(HWND target,
       static_cast<int32_t>(DeviceBridge::kRingDepth), item.Size());
 
   Impl* impl = s->impl_.get();
+  // Weak, so the handler neither keeps Impl alive past its owner nor forms a
+  // cycle through the pool that holds it.
+  const std::weak_ptr<Impl> weak = s->impl_;
   impl->frameToken = impl->pool.FrameArrived(
-      [impl](const wgc::Direct3D11CaptureFramePool& pool, auto&&) {
+      [weak](const wgc::Direct3D11CaptureFramePool& pool, auto&&) {
+        const auto self = weak.lock();
+        if (!self) return;
+        std::lock_guard<std::mutex> lock(self->mutex);
+        if (self->stopped) return;
         auto frame = pool.TryGetNextFrame();
         if (!frame) return;
         auto tex = SurfaceToTexture(frame.Surface());
         if (!tex) return;
-        const bool dropped = impl->bridge->Publish(tex.Get());
-        impl->owner->delivered_.fetch_add(1, std::memory_order_relaxed);
-        if (dropped && impl->onDrop) impl->onDrop();
+        const bool dropped = self->bridge->Publish(tex.Get());
+        self->owner->delivered_.fetch_add(1, std::memory_order_relaxed);
+        if (dropped && self->onDrop) self->onDrop();
       });
 
-  impl->closedToken = item.Closed([impl](auto&&, auto&&) {
-    impl->owner->closed_.store(true, std::memory_order_release);
+  impl->closedToken = item.Closed([weak](auto&&, auto&&) {
+    const auto self = weak.lock();
+    if (!self) return;
+    std::lock_guard<std::mutex> lock(self->mutex);
+    if (self->stopped) return;
+    self->owner->closed_.store(true, std::memory_order_release);
   });
 
   s->impl_->session = s->impl_->pool.CreateCaptureSession(item);
@@ -116,6 +138,12 @@ void WgcSource::Start() {
 
 void WgcSource::Stop() {
   if (!impl_) return;
+  // First, and released before anything below: closing the session may wait
+  // for a handler, and a handler waits for this mutex.
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->stopped = true;
+  }
   if (impl_->pool && impl_->frameToken) {
     impl_->pool.FrameArrived(impl_->frameToken);
     impl_->frameToken = {};

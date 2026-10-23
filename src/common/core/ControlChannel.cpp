@@ -54,6 +54,14 @@ std::unique_ptr<ControlServer> ControlServer::Create(Handler handler) {
   // is not allowed to fail the channel: the commands are the part that matters.
   server->mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
                                         sizeof(SidecarStatus), kMappingName);
+  // No overlay is running (checked above), so a mapping that already exists
+  // under this name was made by something else -- and whoever holds it can read
+  // and rewrite everything published into it. It is dropped rather than shared;
+  // the manager then shows no live numbers, which is the honest outcome.
+  if (server->mapping_ && GetLastError() == ERROR_ALREADY_EXISTS) {
+    CloseHandle(server->mapping_);
+    server->mapping_ = nullptr;
+  }
   if (server->mapping_) {
     server->shared_ = static_cast<SidecarStatus*>(
         MapViewOfFile(server->mapping_, FILE_MAP_WRITE, 0, 0, sizeof(SidecarStatus)));
@@ -108,6 +116,13 @@ bool Send(SidecarCommand command) {
 }
 
 std::optional<SidecarStatus> Read() {
+  // The status is believed only when it was published by the process that owns
+  // the control window. Any program can create a mapping with this name; it
+  // cannot also make the overlay's window belong to itself.
+  DWORD owner = 0;
+  if (HWND hwnd = FindControlWindow()) GetWindowThreadProcessId(hwnd, &owner);
+  if (owner == 0) return std::nullopt;
+
   HANDLE mapping = OpenFileMappingW(FILE_MAP_READ, FALSE, kMappingName);
   if (!mapping) return std::nullopt;
   auto* view = static_cast<const SidecarStatus*>(
@@ -129,6 +144,7 @@ std::optional<SidecarStatus> Read() {
     copy.passName[sizeof(copy.passName) - 1] = '\0';
     copy.runtimeVariant[sizeof(copy.runtimeVariant) - 1] = '\0';
     copy.lastError[sizeof(copy.lastError) - 1] = '\0';
+    if (copy.processId != owner) break;
     out = copy;
     break;
   }

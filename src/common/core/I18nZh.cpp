@@ -307,9 +307,6 @@ const TranslationPair kChineseTable[] = {
     {"Supply a runtime built for this GPU, or the neural pass will fall back to "
      "passthrough.",
      "请提供为此 GPU 构建的运行时，否则神经处理将回退为直通。"},
-    {"The pass will still try this build. If it fails, quote the SHA-256 above "
-     "when reporting it.",
-     "处理仍会尝试使用此版本。如果失败，报告时请附上上面的 SHA-256。"},
     {"ReShade host (optional)",
      "ReShade 宿主（可选）"},
     {"No ReShade host alongside the sidecar.",

@@ -316,9 +316,6 @@ const TranslationPair kKoreanTable[] = {
     {"Supply a runtime built for this GPU, or the neural pass will fall back to "
      "passthrough.",
      "이 GPU용으로 빌드된 런타임을 제공하세요. 없으면 뉴럴 처리가 패스스루로 돌아갑니다."},
-    {"The pass will still try this build. If it fails, quote the SHA-256 above "
-     "when reporting it.",
-     "처리 과정은 이 빌드로도 시도합니다. 실패하면 신고할 때 위의 SHA-256을 함께 적어 주세요."},
     {"ReShade host (optional)",
      "ReShade 호스트 (선택)"},
     {"No ReShade host alongside the sidecar.",

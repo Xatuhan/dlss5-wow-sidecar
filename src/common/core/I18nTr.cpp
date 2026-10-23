@@ -345,10 +345,6 @@ const TranslationPair kTurkishTable[] = {
      "passthrough.",
      "Bu GPU için derlenmiş bir çalışma zamanı sağlayın, yoksa nöral geçiş "
      "doğrudan geçişe döner."},
-    {"The pass will still try this build. If it fails, quote the SHA-256 above "
-     "when reporting it.",
-     "Geçiş bu sürümü yine de deneyecek. Başarısız olursa bildirirken yukarıdaki "
-     "SHA-256'yı belirtin."},
     {"ReShade host (optional)",
      "ReShade barındırıcısı (isteğe bağlı)"},
     {"No ReShade host alongside the sidecar.",
@@ -836,6 +832,33 @@ const TranslationPair kTurkishTable[] = {
     {"Installed as the latest runtime (RTX 50).",
      "En yeni çalışma zamanı olarak yüklendi (RTX 50)."},
     {"Source: %s", "Kaynak: %s"},
+    {"Sidecar component integrity",
+     "Sidecar bileşen bütünlüğü"},
+    {"Every DLL and add-on beside the sidecar is a known build.",
+     "Sidecar'ın yanındaki her DLL ve eklenti bilinen bir sürüm."},
+    {"Remove these files, or replace them with the ones from the release zip. The "
+     "overlay loads code from this folder, so it will not start while anything "
+     "unknown is in it.",
+     "Bu dosyaları kaldırın ya da sürüm zip'indekilerle değiştirin. Overlay bu "
+     "klasörden kod yüklediği için içinde bilinmeyen bir dosya varken başlamaz."},
+    {"The overlay will not load this build. Use a runtime from the release zip, or "
+     "add this SHA-256 to the manifest once the file has been verified.",
+     "Overlay bu sürümü yüklemez. Sürüm zip'indeki çalışma zamanını kullanın ya da "
+     "dosya doğrulandıktan sonra bu SHA-256'yı manifeste ekleyin."},
+    {"The overlay was not started. These files are not known builds:",
+     "Overlay başlatılmadı. Şu dosyalar bilinen sürümler değil:"},
+    {"is not a file this project ships, and the folder it is in is one the overlay "
+     "loads code from.",
+     "bu projenin dağıttığı bir dosya değil ve bulunduğu klasör overlay'in kod "
+     "yüklediği klasör."},
+    {"could not be read, so it could not be checked.",
+     "okunamadı, bu yüzden kontrol edilemedi."},
+    {"is not a build this project knows.",
+     "bu projenin tanıdığı bir sürüm değil."},
+    {"does not belong in a runtime slot.",
+     "bir çalışma zamanı yuvasına ait değil."},
+    {"That file is not a build this project knows, so it was not copied in. SHA-256: ",
+     "Bu dosya bu projenin tanıdığı bir sürüm değil, bu yüzden kopyalanmadı. SHA-256: "},
 };
 
 const size_t kTurkishTableSize = sizeof(kTurkishTable) / sizeof(kTurkishTable[0]);

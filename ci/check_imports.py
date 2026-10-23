@@ -18,6 +18,13 @@ FORBIDDEN_SYMBOLS = {
     "SetWindowsHookExA", "SetWindowsHookExW",
     # I6: never synthesise input to the game's window.
     "SendInput", "keybd_event", "mouse_event", "BlockInput",
+    # I1, tightened: no handle to another process or its threads at all, and no
+    # native-API route around the Win32 names above. The capture needs neither --
+    # it works from a window handle -- so nothing legitimate is lost, and a
+    # handle to Wow.exe is the first step of everything this project refuses.
+    "OpenProcess", "OpenThread", "DebugActiveProcess",
+    "NtOpenProcess", "NtReadVirtualMemory", "NtWriteVirtualMemory",
+    "NtProtectVirtualMemory", "NtAllocateVirtualMemory",
 }
 FORBIDDEN_MODULES = {"WS2_32.DLL", "WINHTTP.DLL", "WININET.DLL", "URLMON.DLL", "WINSOCK32.DLL"}
 
@@ -60,6 +67,29 @@ def parse_imports(pe_path):
     return out
 
 
+# Exploit mitigations every shipped binary must carry, by DllCharacteristics bit.
+# The overlay hosts third-party native code in-process, so these are what stand
+# between a bug in any of it and arbitrary code running with the user's rights.
+REQUIRED_MITIGATIONS = {
+    0x0020: "HIGH_ENTROPY_VA",
+    0x0040: "DYNAMICBASE",
+    0x0100: "NXCOMPAT",
+    0x4000: "GUARD_CF",
+}
+
+
+def missing_mitigations(dll_characteristics):
+    """Names of the required mitigation flags absent from a PE header value."""
+    return sorted(name for bit, name in REQUIRED_MITIGATIONS.items()
+                  if not dll_characteristics & bit)
+
+
+def read_dll_characteristics(pe_path):
+    import pefile
+    pe = pefile.PE(pe_path, fast_load=True)
+    return pe.OPTIONAL_HEADER.DllCharacteristics
+
+
 def check_no_elevation_manifest(pe_path):
     """I12: never request elevation. Legitimate software behaves legibly.
 
@@ -86,8 +116,11 @@ def main(argv):
         elif not check_no_elevation_manifest(path):
             failed = True
             print(f"FAIL {path}: manifest requests elevation (spec I12)", file=sys.stderr)
+        elif missing := missing_mitigations(read_dll_characteristics(path)):
+            failed = True
+            print(f"FAIL {path}: built without {', '.join(missing)}", file=sys.stderr)
         else:
-            print(f"ok   {path}: no forbidden imports")
+            print(f"ok   {path}: no forbidden imports, mitigations present")
     return 1 if failed else 0
 
 

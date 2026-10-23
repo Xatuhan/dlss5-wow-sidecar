@@ -913,12 +913,39 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
   const auto startOverlay = [&]() {
     if (dirty && !save()) return;
+    // Every byte, here, whatever the Checks page last saw: this is the moment
+    // wowsidecar.exe is about to load dxgi.dll from this folder, and by the time
+    // it could check that file itself, ReShade's code would already have run.
+    if (const auto problems = VerifyComponents(sidecarDir); !problems.empty()) {
+      const std::string why = DescribeComponentProblems(problems);
+      GlobalLog().Error("overlay not started; unknown files beside the sidecar:\n" + why);
+      results = runProbes();
+      MessageBoxW(hwnd,
+                  WideFromUtf8(std::string(Tr("The overlay was not started. These files "
+                                              "are not known builds:")) +
+                               "\n\n" + why)
+                      .c_str(),
+                  L"DLSS 5 Sidecar", MB_ICONERROR);
+      return;
+    }
     // The runtime has to be able to hand the foreground back to the game, and a
     // launched process only inherits that right from the process that owned the
     // foreground -- which, at this instant, is this one.
-    AllowSetForegroundWindow(ASFW_ANY);
-    ShellExecuteW(nullptr, L"open", (sidecarDir / "wowsidecar.exe").c_str(), nullptr,
-                  sidecarDir.c_str(), SW_SHOWNORMAL);
+    //
+    // The right goes to the overlay's process alone. ASFW_ANY would hand it to
+    // every process on the desktop for as long as it lasts, which is a licence
+    // for anything running to pull itself in front of the game.
+    const std::wstring overlayPath = (sidecarDir / "wowsidecar.exe").wstring();
+    SHELLEXECUTEINFOW launch{sizeof(launch)};
+    launch.fMask = SEE_MASK_NOCLOSEPROCESS;
+    launch.lpVerb = L"open";
+    launch.lpFile = overlayPath.c_str();
+    launch.lpDirectory = sidecarDir.c_str();
+    launch.nShow = SW_SHOWNORMAL;
+    if (ShellExecuteExW(&launch) && launch.hProcess) {
+      AllowSetForegroundWindow(GetProcessId(launch.hProcess));
+      CloseHandle(launch.hProcess);
+    }
     GlobalLog().Info("overlay launch requested");
     // And then get out of the way: the overlay is about to cover the screen, and
     // this window would otherwise sit between it and the game.

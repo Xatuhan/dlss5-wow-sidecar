@@ -2,6 +2,7 @@
 
 #include "core/I18n.h"
 #include "core/Sha256.h"
+#include "neural/ComponentManifest.h"
 #include "neural/RuntimeManifest.h"
 #include "neural/RuntimeSelect.h"
 
@@ -30,6 +31,8 @@ std::string Lower(std::string_view text) {
 // kind of tidiness failure that makes people delete the whole folder by hand.
 constexpr std::string_view kGeneratedFiles[] = {
     "sidecar.toml", "sidecar.log", "sidecar-manager.log", "ReShade.ini", "ReShade.log",
+    // Left behind only by a save that was interrupted (see AtomicFile.h).
+    "sidecar.toml.saving", "ReShade.ini.saving",
 };
 
 }  // namespace
@@ -112,6 +115,17 @@ InstallResult InstallComponent(const Component& component, const fs::path& sourc
   }
   if (!fs::is_regular_file(source, ec) || ec) {
     return {false, Tr("That is not a file.")};
+  }
+
+  // Whatever is copied in here is loaded as code by the overlay, so the file has
+  // to be a build the manifests know -- the same rule the overlay applies before
+  // it starts, applied early enough that the operator is told at the moment
+  // they picked the file rather than at the next launch.
+  const std::string digest = Sha256File(source);
+  if (!IsKnownComponent(component.installedAs, digest)) {
+    return {false, Tr("That file is not a build this project knows, so it was not "
+                      "copied in. SHA-256: ") +
+                       (digest.empty() ? std::string("?") : digest)};
   }
 
   fs::path destination = sidecarDir / std::string(component.installedAs);

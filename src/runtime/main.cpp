@@ -14,6 +14,7 @@
 #include "core/Log.h"
 #include "core/Utf8.h"
 #include "neural/AddonSettings.h"
+#include "neural/ComponentManifest.h"
 #include "neural/NeuralPassFactory.h"
 #include "neural/RuntimeSelect.h"
 #include "present/WindowTracker.h"
@@ -189,6 +190,28 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       GlobalLog().Warn("could not write ReShade.ini; the neural settings in "
                        "sidecar.toml will not reach the add-on this run");
     }
+  }
+
+  // The manager checks this folder before it launches us, but the overlay can be
+  // started on its own. ReShade loads every add-on here, and NGX maps the runtime
+  // just staged, at the first device creation inside Pipeline::Create -- so this
+  // is the last point at which an unknown one can still be kept out. (dxgi.dll
+  // itself is already loaded by now; for it, this is detection, not prevention,
+  // which is why the manager's check is the one that matters.)
+  if (const auto problems = VerifyComponents(ExecutableDirectory()); !problems.empty()) {
+    std::string why;
+    for (const auto& problem : problems) {
+      why += "\n" + problem.file + " " + Tr(problem.reason);
+      if (!problem.sha256.empty()) why += " SHA-256 " + problem.sha256;
+    }
+    GlobalLog().Error("refusing to start; unknown files beside the sidecar:" + why);
+    MessageBoxW(nullptr,
+                WideFromUtf8(std::string(Tr("The overlay was not started. These files "
+                                            "are not known builds:")) +
+                             "\n" + why)
+                    .c_str(),
+                L"DLSS 5 Sidecar", MB_ICONERROR);
+    return 1;
   }
 
   PipelineConfig cfg;

@@ -1,5 +1,7 @@
 #include "neural/AddonSettings.h"
 
+#include "core/AtomicFile.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -15,6 +17,7 @@ namespace {
 constexpr std::string_view kAddonSection = "ADDON";
 constexpr std::string_view kGeneralSection = "GENERAL";
 constexpr std::string_view kNeuralSection = "RenoDX.DLSS5";
+constexpr std::string_view kScreenshotSection = "SCREENSHOT";
 
 std::string Lower(std::string_view text) {
   std::string out(text);
@@ -233,6 +236,19 @@ std::string ApplyNeuralSettings(std::string_view ini, const NeuralSettings& sett
   if (!UpdateSection(lines, kGeneralSection, effects)) {
     AppendSection(lines, kGeneralSection, effects);
   }
+
+  // ReShade runs [SCREENSHOT] PostSaveCommand after every screenshot it saves
+  // (runtime.cpp, execute_screenshot_post_save_command), through CreateProcessW
+  // or `cmd /C` for a .bat. Nothing here takes screenshots, so the command is
+  // pinned empty: otherwise a line planted in this file would turn ReShade's
+  // screenshot key into a way to run any program inside the sidecar.
+  const std::vector<Setting> screenshot{
+      {"PostSaveCommand", std::string()},
+      {"PostSaveCommandArguments", std::string()},
+  };
+  if (!UpdateSection(lines, kScreenshotSection, screenshot)) {
+    AppendSection(lines, kScreenshotSection, screenshot);
+  }
   const auto neural = NeuralKeys(settings);
   if (!UpdateSection(lines, kNeuralSection, neural)) {
     AppendSection(lines, kNeuralSection, neural);
@@ -252,12 +268,7 @@ bool WriteNeuralSettings(const std::filesystem::path& iniPath,
   if (std::ifstream in(iniPath, std::ios::binary); in) {
     existing.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   }
-  const std::string updated = ApplyNeuralSettings(existing, settings);
-
-  std::ofstream out(iniPath, std::ios::binary | std::ios::trunc);
-  if (!out) return false;
-  out.write(updated.data(), static_cast<std::streamsize>(updated.size()));
-  return out.good();
+  return WriteFileAtomically(iniPath, ApplyNeuralSettings(existing, settings));
 }
 
 }  // namespace sidecar

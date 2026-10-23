@@ -2,6 +2,7 @@
 
 #include <toml++/toml.h>
 
+#include "core/AtomicFile.h"
 #include "core/Hotkey.h"
 #include "core/I18n.h"
 
@@ -11,9 +12,14 @@
 #include <fstream>
 #include <iterator>
 #include <sstream>
+#include <system_error>
 
 namespace sidecar {
 namespace {
+
+constexpr uintmax_t kMaxConfigBytes = 1024 * 1024;
+constexpr size_t kMaxMaskRects = 64;
+constexpr int64_t kMaxMaskEdge = 1 << 20;
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
@@ -294,17 +300,30 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
 
   if (const auto node = root.get("ui_mask")) {
     if (const auto* array = node->as_array()) {
+      // An edge outside int32 would wrap on the cast below and come out as a
+      // rectangle nobody wrote; no display is anywhere near this wide.
+      const auto edge = [](const toml::table& entry, const char* name) {
+        return static_cast<int32_t>(
+            std::clamp<int64_t>(entry[name].value_or<int64_t>(0), -kMaxMaskEdge, kMaxMaskEdge));
+      };
       for (const auto& element : *array) {
         const auto* entry = element.as_table();
         if (!entry) {
           warnings.emplace_back("ui_mask: expected a table of edges; entry ignored");
           continue;
         }
+        // The mask is rasterised on the CPU, every pixel against every
+        // rectangle, so the count is what bounds that loop.
+        if (config.uiMaskRects.size() >= kMaxMaskRects) {
+          warnings.emplace_back("ui_mask: more than " + std::to_string(kMaxMaskRects) +
+                                " rectangles; the rest are ignored");
+          break;
+        }
         UiRect rect;
-        rect.left = static_cast<int32_t>((*entry)["left"].value_or<int64_t>(0));
-        rect.top = static_cast<int32_t>((*entry)["top"].value_or<int64_t>(0));
-        rect.right = static_cast<int32_t>((*entry)["right"].value_or<int64_t>(0));
-        rect.bottom = static_cast<int32_t>((*entry)["bottom"].value_or<int64_t>(0));
+        rect.left = edge(*entry, "left");
+        rect.top = edge(*entry, "top");
+        rect.right = edge(*entry, "right");
+        rect.bottom = edge(*entry, "bottom");
         config.uiMaskRects.push_back(rect);
       }
     } else {
@@ -348,6 +367,14 @@ std::optional<Config> LoadConfig(const std::filesystem::path& path,
                                  std::vector<std::string>& warnings) {
   std::ifstream file(path, std::ios::binary);
   if (!file) return std::nullopt;
+  // The manager writes a few kilobytes. Anything vastly larger was not written
+  // by it, and is refused before it is read into memory whole.
+  std::error_code ec;
+  if (const auto size = std::filesystem::file_size(path, ec); !ec && size > kMaxConfigBytes) {
+    warnings.emplace_back("config is " + std::to_string(size) +
+                          " bytes, more than this program ever writes; ignored");
+    return std::nullopt;
+  }
   const std::string text((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
   return ParseConfig(text, warnings);
@@ -362,9 +389,9 @@ std::string SerializeConfig(const Config& config) {
   out << "theme = " << TomlString(config.theme) << "\n";
   out << "advanced_mode = " << Boolean(config.advancedMode) << "\n";
   out << "client = " << TomlString(TagForGameClient(config.client)) << "\n";
-  out << "neural_pass = \"" << config.neuralPass << "\"\n";
+  out << "neural_pass = " << TomlString(config.neuralPass) << "\n";
   out << "neural_runtime = " << TomlString(TagForRuntimeMode(config.neuralRuntime)) << "\n";
-  out << "dlss_preset = \"" << config.dlssPreset << "\"\n";
+  out << "dlss_preset = " << TomlString(config.dlssPreset) << "\n";
   out << "show_hud = " << Boolean(config.showHud) << "\n";
   out << "show_overlay = " << Boolean(config.showOverlay) << "\n";
   out << "flow_grid_size = " << config.flowGridSize << "\n";
@@ -426,12 +453,7 @@ std::string SerializeConfig(const Config& config) {
 }
 
 bool SaveConfig(const std::filesystem::path& path, const Config& config) {
-  std::ofstream file(path, std::ios::binary | std::ios::trunc);
-  if (!file) return false;
-  const std::string text = SerializeConfig(config);
-  file.write(text.data(), static_cast<std::streamsize>(text.size()));
-  file.flush();
-  return file.good();
+  return WriteFileAtomically(path, SerializeConfig(config));
 }
 
 const char* TagForGameClient(GameClient client) {

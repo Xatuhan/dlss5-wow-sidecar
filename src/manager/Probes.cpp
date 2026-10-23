@@ -277,11 +277,13 @@ ProbeResult NeuralRuntimeVerdict(std::string_view fileName,
     return r;
   }
 
-  // Amber, not red. A newer runtime than this manifest knows is a legitimate
-  // thing for an operator to have, and refusing it outright would age badly.
-  r.state = ProbeState::Warn;
-  r.remedy = Tr("The pass will still try this build. If it fails, quote the "
-             "SHA-256 above when reporting it.");
+  // Red. This is native code the overlay maps into its own process, and the
+  // overlay refuses a build the manifest does not know, so the board says so
+  // rather than promising a pass that will not run.
+  r.state = ProbeState::Fail;
+  r.remedy = Tr("The overlay will not load this build. Use a runtime from the "
+                "release zip, or add this SHA-256 to the manifest once the file "
+                "has been verified.");
   return r;
 }
 
@@ -313,6 +315,36 @@ ProbeResult ProbeReshade(const fs::path& sidecarDir) {
              "against the sidecar so it lands as dxgi.dll. Never place ReShade "
              "next to Wow.exe.");
   return r;
+}
+
+ProbeResult ComponentVerdict(const std::vector<ComponentProblem>& problems) {
+  ProbeResult r;
+  r.title = Tr("Sidecar component integrity");
+  if (problems.empty()) {
+    r.state = ProbeState::Ok;
+    r.detail = Tr("Every DLL and add-on beside the sidecar is a known build.");
+    return r;
+  }
+  r.state = ProbeState::Fail;
+  r.detail = DescribeComponentProblems(problems);
+  r.remedy = Tr("Remove these files, or replace them with the ones from the release "
+                "zip. The overlay loads code from this folder, so it will not start "
+                "while anything unknown is in it.");
+  return r;
+}
+
+ProbeResult ProbeComponents(const fs::path& sidecarDir) {
+  return ComponentVerdict(VerifyComponents(sidecarDir, DigestReuse::ReuseUnchanged));
+}
+
+std::string DescribeComponentProblems(const std::vector<ComponentProblem>& problems) {
+  std::string out;
+  for (const auto& problem : problems) {
+    if (!out.empty()) out += "\n";
+    out += problem.file + " " + Tr(problem.reason);
+    if (!problem.sha256.empty()) out += " SHA-256 " + problem.sha256;
+  }
+  return out;
 }
 
 ProbeResult WowWindowVerdict(const std::optional<TargetWindow>& wow, GameClient selected) {
@@ -494,6 +526,7 @@ std::vector<ProbeResult> RunAllProbes(const fs::path& sidecarDir, const fs::path
       ProbeInjectorScan(wowDir, client),
       ProbeNeuralRuntime(sidecarDir, runtime),
       ProbeReshade(sidecarDir),
+      ProbeComponents(sidecarDir),
   };
 }
 

@@ -46,7 +46,31 @@ def test_allows_legitimate_imports():
     assert forbidden_imports({
         "USER32.dll!SetWinEventHook",
         "USER32.dll!GetWindowLongW",
-        "KERNEL32.dll!OpenProcess",
         "d3d12.dll!D3D12CreateDevice",
         "dcomp.dll!DCompositionCreateDevice",
     }) == []
+
+
+def test_flags_any_handle_to_another_process():
+    found = forbidden_imports({
+        "KERNEL32.dll!OpenProcess",
+        "KERNEL32.dll!OpenThread",
+        "ntdll.dll!NtReadVirtualMemory",
+        "KERNEL32.dll!GetProcessId",
+    })
+    assert found == [
+        "KERNEL32.dll!OpenProcess",
+        "KERNEL32.dll!OpenThread",
+        "ntdll.dll!NtReadVirtualMemory",
+    ]
+
+
+def test_mitigations_all_present():
+    from check_imports import missing_mitigations
+    assert missing_mitigations(0x0020 | 0x0040 | 0x0100 | 0x4000 | 0x8000) == []
+
+
+def test_mitigations_reports_missing_cfg():
+    from check_imports import missing_mitigations
+    # What the 0.6.0 executables actually carried.
+    assert missing_mitigations(0x0020 | 0x0040 | 0x0100 | 0x8000) == ["GUARD_CF"]

@@ -350,10 +350,6 @@ const TranslationPair kSpanishTable[] = {
      "passthrough.",
      "Aporta un runtime compilado para esta GPU o el pase neuronal volverá al "
      "modo directo."},
-    {"The pass will still try this build. If it fails, quote the SHA-256 above "
-     "when reporting it.",
-     "El pase lo intentará igualmente con esta compilación. Si falla, indica el "
-     "SHA-256 de arriba al informar."},
     {"ReShade host (optional)",
      "Host ReShade (opcional)"},
     {"No ReShade host alongside the sidecar.",

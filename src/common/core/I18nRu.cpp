@@ -309,10 +309,6 @@ const TranslationPair kRussianTable[] = {
      "passthrough.",
      "Поставьте рантайм, собранный под эту карту, иначе нейронный проход "
      "откатится к сквозному."},
-    {"The pass will still try this build. If it fails, quote the SHA-256 above "
-     "when reporting it.",
-     "Проход всё равно попробует эту сборку. Если не выйдет, укажите SHA-256 "
-     "выше в сообщении об ошибке."},
     {"ReShade host (optional)", "Хост ReShade (необязательно)"},
     {"No ReShade host alongside the sidecar.",
      "Рядом с программой нет хоста ReShade."},

@@ -315,10 +315,6 @@ const TranslationPair kArabicTable[] = {
      "passthrough.",
      "وفّر بيئة تشغيل مبنية لهذا المعالج، وإلا عاد المرور العصبي إلى المرور "
      "المباشر."},
-    {"The pass will still try this build. If it fails, quote the SHA-256 above "
-     "when reporting it.",
-     "سيحاول المرور مع هذه النسخة على أي حال. إن فشل فاذكر قيمة SHA-256 أعلاه عند "
-     "الإبلاغ."},
     {"ReShade host (optional)",
      "مضيف ReShade (اختياري)"},
     {"No ReShade host alongside the sidecar.",

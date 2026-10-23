@@ -16,18 +16,28 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # I12: no obfuscation, no packing, and a plain user-level manifest.
 add_compile_options(/W4 /permissive- /utf-8 /Zc:__cplusplus /EHsc)
+# Control Flow Guard. ASLR, DEP and /GS are MSVC defaults; CFG is not, and the
+# overlay hosts third-party native code (ReShade, the add-on, NGX) in-process,
+# so an indirect call that a corrupted pointer redirects should fault rather
+# than land anywhere it likes. ci/check_imports.py checks the flag is set.
+add_compile_options(/guard:cf)
+add_link_options(/guard:cf)
 add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 include(FetchContent)
+# Pinned by commit, not by tag. A tag is a movable name: whoever controls the
+# upstream repository can point v3.4.0 at different code tomorrow, and this
+# build would compile it into both executables without a word. A commit hash
+# names exactly the tree that was reviewed. The tag is kept beside it to read.
 FetchContent_Declare(catch2
   GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-  GIT_TAG v3.7.1)
+  GIT_TAG fa43b77429ba76c462b1898d6cd2f2d7a9416b14)   # v3.7.1
 FetchContent_Declare(tomlplusplus
   GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
-  GIT_TAG v3.4.0)
+  GIT_TAG 30172438cee64926dc41fdd9c11fb3ba5b2ba9de)   # v3.4.0
 FetchContent_Declare(imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.91.5)
+  GIT_TAG f401021d5a5d56fe2304056c391e78f81c8d4b8f)   # v1.91.5
 FetchContent_MakeAvailable(catch2 tomlplusplus imgui)
 
 # Our project-wide _UNICODE (above) would otherwise select Catch2's wmain entry
@@ -83,6 +93,7 @@ target_sources(sidecar_common PRIVATE
   src/common/core/PanicSwitch.cpp
   src/common/core/Hotkey.cpp
   src/common/core/Utf8.cpp
+  src/common/core/AtomicFile.cpp
   src/common/core/I18n.cpp
   src/common/core/I18nRu.cpp
   src/common/core/I18nEs.cpp
@@ -107,6 +118,7 @@ target_sources(sidecar_common PRIVATE
   src/common/neural/AddonSettings.cpp
   src/common/neural/PassthroughPass.cpp
   src/common/neural/RuntimeManifest.cpp
+  src/common/neural/ComponentManifest.cpp
   src/common/neural/RuntimeSelect.cpp
   src/common/neural/NgxSession.cpp
   src/common/neural/ReshadeHostedPass.cpp

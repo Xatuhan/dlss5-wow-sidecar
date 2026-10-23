@@ -39,7 +39,8 @@ class WgcSource {
   WgcSource() = default;
 
   struct Impl;
-  std::unique_ptr<Impl> impl_;
+  // Shared only so the capture handlers can hold it weakly; see Impl::mutex.
+  std::shared_ptr<Impl> impl_;
   HWND target_ = nullptr;
   std::atomic<bool> closed_{false};
   std::atomic<uint64_t> delivered_{0};

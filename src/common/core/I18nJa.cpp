@@ -318,9 +318,6 @@ const TranslationPair kJapaneseTable[] = {
     {"Supply a runtime built for this GPU, or the neural pass will fall back to "
      "passthrough.",
      "この GPU 向けにビルドされたランタイムを用意してください。ないとニューラル処理はパススルーに戻ります。"},
-    {"The pass will still try this build. If it fails, quote the SHA-256 above "
-     "when reporting it.",
-     "処理はこのビルドでも試行します。失敗した場合は、報告の際に上の SHA-256 を添えてください。"},
     {"ReShade host (optional)",
      "ReShade ホスト（任意）"},
     {"No ReShade host alongside the sidecar.",

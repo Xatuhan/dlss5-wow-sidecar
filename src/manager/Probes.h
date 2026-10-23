@@ -6,6 +6,7 @@
 
 #include "core/Config.h"
 #include "core/GpuProfile.h"
+#include "neural/ComponentManifest.h"
 #include "present/WindowTracker.h"
 
 namespace sidecar {
@@ -69,6 +70,13 @@ ProbeResult ProbeRefreshRate();
 ProbeResult ProbeNeuralRuntime(const std::filesystem::path& sidecarDir,
                                RuntimeMode mode = RuntimeMode::Auto);
 ProbeResult ProbeReshade(const std::filesystem::path& sidecarDir);
+// Red when the sidecar's folder holds a loadable file that is not a known build
+// of a shipped component (see ComponentManifest.h); red blocks Start.
+ProbeResult ComponentVerdict(const std::vector<ComponentProblem>& problems);
+ProbeResult ProbeComponents(const std::filesystem::path& sidecarDir);
+// The same verdict as one line per file, for the dialog shown when Start is
+// refused. Empty when there is nothing to say.
+std::string DescribeComponentProblems(const std::vector<ComponentProblem>& problems);
 ProbeResult ProbeWowWindow(GameClient client);
 ProbeResult ProbeWowFolder(const std::filesystem::path& wowDir, GameClient client);
 ProbeResult ProbeInjectorScan(const std::filesystem::path& wowDir, GameClient client);

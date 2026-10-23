@@ -19,9 +19,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # v5
         with:
           python-version: '3.12'
 
@@ -58,8 +58,24 @@ jobs:
       # runner has, and keeps working the next time that moves. Local builds
       # are unaffected -- the README still tells a contributor to pass the
       # generator, and passing it is still correct on a machine that has it.
+      # The DLSS SDK is public, so CI builds the real NGX path rather than the
+      # stub NgxSession compiles to without it. Pinned to a release tag and
+      # then checked against that tag's commit, so a moved tag fails here
+      # instead of being compiled in. Only include/ and lib/ are checked out;
+      # the repository also carries several hundred MB of runtime DLLs.
+      - name: Fetch the NVIDIA DLSS SDK
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch v310.9.16 --filter=blob:none --sparse https://github.com/NVIDIA/DLSS sdk-dlss
+          $commit = git -C sdk-dlss rev-parse HEAD
+          if ($commit -ne '9981c6350dc58c0ce21f024fd65e31e851c31689') {
+            Write-Error "NVIDIA/DLSS v310.9.16 resolved to $commit, not the reviewed commit."
+            exit 1
+          }
+          git -C sdk-dlss sparse-checkout set include lib
+
       - name: Configure
-        run: cmake -S . -B build -A x64
+        run: cmake -S . -B build -A x64 -DDLSS_SDK_DIR=${{ github.workspace }}/sdk-dlss
 
       # The invariant check runs as a post-build step on every executable, so a
       # forbidden import fails this step rather than shipping.

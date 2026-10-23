@@ -339,10 +339,6 @@ const TranslationPair kGermanTable[] = {
      "passthrough.",
      "Stelle eine für diese GPU gebaute Laufzeit bereit, sonst fällt der "
      "neuronale Pass auf Durchreichen zurück."},
-    {"The pass will still try this build. If it fails, quote the SHA-256 above "
-     "when reporting it.",
-     "Der Pass versucht es trotzdem mit diesem Build. Scheitert er, gib beim "
-     "Melden den SHA-256 oben an."},
     {"ReShade host (optional)",
      "ReShade-Host (optional)"},
     {"No ReShade host alongside the sidecar.",

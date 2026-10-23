@@ -58,16 +58,23 @@ std::unique_ptr<ReshadeHostedPass> ReshadeHostedPass::Create(
   const std::filesystem::path runtime = options.runtimeDir / "nvngx_dlssnr.dll";
   const std::string digest = Sha256File(runtime);
   const auto entry = LookupRuntime(digest);
-  if (entry) {
-    const std::string mismatch = DescribeCompatibility(options.arch, entry->variant);
-    if (!mismatch.empty()) {
-      reason = mismatch;
-      return nullptr;
-    }
+  // An unrecognised build is refused. It used to be let through on the grounds
+  // that it might be a newer NVIDIA release, but this file is native code mapped
+  // into this process, and the one build this project ships for Ada is already
+  // a third-party patch whose signature no longer verifies. A digest the
+  // manifest knows is the only statement about it that can be checked.
+  if (!entry) {
+    reason = digest.empty()
+                 ? "nvngx_dlssnr.dll is missing or could not be read"
+                 : "nvngx_dlssnr.dll is not a build this project knows (SHA-256 " + digest +
+                       "); add its digest to RuntimeManifest.cpp once it is verified";
+    return nullptr;
   }
-  // An unrecognised digest is not refused: the operator may legitimately have a
-  // newer build than the manifest knows, and finding out costs one failed
-  // feature creation that already degrades to passthrough.
+  if (const std::string mismatch = DescribeCompatibility(options.arch, entry->variant);
+      !mismatch.empty()) {
+    reason = mismatch;
+    return nullptr;
+  }
 
   auto session = NgxSession::Create(device, options.runtimeDir);
   if (!session) {

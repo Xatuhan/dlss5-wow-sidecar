@@ -69,7 +69,12 @@ std::unique_ptr<NvofaFlow> NvofaFlow::Create(ID3D12Device* device,
   // nvofapi64.dll ships with the driver. Resolving it at runtime rather than
   // linking it keeps this binary loadable on a machine without it, and keeps
   // the import table free of a dependency the invariant check would see.
-  HMODULE library = LoadLibraryW(L"nvofapi64.dll");
+  //
+  // System32 only. A bare LoadLibraryW looks in this executable's own folder
+  // first, which is the one folder a user is guaranteed to be able to write to,
+  // so any nvofapi64.dll dropped beside the sidecar would run in it. The driver
+  // installs the real one into System32 and nowhere else.
+  HMODULE library = LoadLibraryExW(L"nvofapi64.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
   if (!library) return f;   // session_ stays null; Available() is false
   f->library_ = library;
 

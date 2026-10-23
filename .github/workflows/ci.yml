@@ -10,7 +10,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # security-* as well: a fork registers no workflow until one has run, and a
+    # hardening branch is exactly the kind that must be built before it merges.
+    branches: [main, 'security-*']
   pull_request:
   workflow_dispatch:
 

@@ -174,6 +174,13 @@ struct Config {
   // things smear (the 0.4.0/0.5.0 ghosting was this, built in).
   bool invertMotion = false;
 
+  // With no optical flow at all -- a build without the Optical Flow SDK, or a
+  // driver without NVOFA -- the neural pass is normally skipped, because it has
+  // no motion field to be handed. This runs it anyway on an all-zero field.
+  // Still frames come out right; anything that moves smears, since the model
+  // is told nothing moved. For checking that DLSS runs on a card, not for play.
+  bool staticMotion = false;
+
   std::vector<UiRect> uiMaskRects;
   uint32_t uiMaskFeather = 0;
 

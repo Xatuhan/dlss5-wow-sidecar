@@ -176,3 +176,18 @@ TEST_CASE("a written config reads back as itself", "[unit]") {
   REQUIRE(reread.uiMaskRects.size() == 1);
   REQUIRE(reread.uiMaskRects[0].bottom == 1080);
 }
+
+TEST_CASE("static_motion is off unless asked for, and survives a save", "[unit]") {
+  // It runs the neural pass on a zero motion field, which smears anything that
+  // moves -- so it must never be on by default, and a manager save must not
+  // silently drop it once the operator has turned it on.
+  CHECK_FALSE(Config{}.staticMotion);
+
+  std::vector<std::string> warnings;
+  const auto on = ParseConfig("static_motion = true\n", warnings);
+  CHECK(warnings.empty());
+  CHECK(on.staticMotion);
+  CHECK(ParseConfig(SerializeConfig(on), warnings).staticMotion);
+
+  CHECK(SerializeConfig(Config{}).find("static_motion") == std::string::npos);
+}

@@ -233,6 +233,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   cfg.neuralPasses = config.neuralPasses;
   cfg.disocclusionFallback = config.disocclusionFallback;
   cfg.invertMotion = config.invertMotion;
+  cfg.staticMotion = config.staticMotion;
   if (config.invertMotion) {
     GlobalLog().Warn("invert_motion is on: motion vectors are deliberately "
                      "flipped, and moving things will smear. Diagnostic only.");

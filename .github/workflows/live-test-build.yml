@@ -1,0 +1,119 @@
+name: Live test build
+
+# Builds this branch in Release configuration against the DLSS SDK and lays
+# the result over the published 0.6.0 bundle, so it can be tried on a real RTX
+# card without anyone assembling it by hand.
+#
+# Built WITHOUT the Optical Flow SDK on purpose: its D3D12 header sits behind
+# an NVIDIA developer login. With no optical flow the pipeline has no motion
+# field, so the bundle ships a sidecar.toml with static_motion = true, which
+# runs the neural pass on a zero field instead of skipping it. Still images are
+# right; anything that moves smears. It proves DLSS 5 runs on the card -- it is
+# not how the game is meant to look.
+#
+# What comes out is an Actions artifact, not a release: it expires, it is not
+# listed anywhere, and nothing here publishes, tags or pushes.
+#
+# The two executables and the test tools are built from this commit. Every
+# other file is taken unchanged from xilla420's v0.6.0 zip, whose SHA-256 is
+# checked against the value recorded when it was audited.
+
+on:
+  workflow_dispatch:
+  # A fork registers no workflow until one has run, and workflow_dispatch alone
+  # can never be the first run. A push that touches this file is.
+  push:
+    branches: ['security-*']
+    paths: ['.github/workflows/live-test-build.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check pefile==2024.8.26
+
+      - name: Fetch the NVIDIA DLSS SDK
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch v310.9.16 --filter=blob:none --sparse https://github.com/NVIDIA/DLSS sdk-dlss
+          $commit = git -C sdk-dlss rev-parse HEAD
+          if ($commit -ne '9981c6350dc58c0ce21f024fd65e31e851c31689') {
+            Write-Error "NVIDIA/DLSS v310.9.16 resolved to $commit, not the reviewed commit."
+            exit 1
+          }
+          git -C sdk-dlss sparse-checkout set include lib
+
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DDLSS_SDK_DIR=${{ github.workspace }}/sdk-dlss
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Unit tests
+        run: build\tests\Release\sidecar_tests.exe "[unit]"
+
+      - name: Check the binaries against the safety invariants
+        run: python ci/check_imports.py build\Release\wowsidecar.exe build\Release\wowsidecar-manager.exe build\Release\testpattern.exe
+
+      # Reading a public release, nothing more. The digest is the one recorded
+      # in the audit (Obsidian, DLSS5 Fork / FAZ 1); any other file stops here.
+      - name: Fetch the audited 0.6.0 bundle
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.6.0 -R xilla420/dlss5-wow-sidecar -p 'dlss5-wow-sidecar-v0.6.0.zip'
+          $hash = (Get-FileHash dlss5-wow-sidecar-v0.6.0.zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne '6eda271b81b885f35ba1510a9ee016556dea8d55fcc4aadfe17488c8cca3094c') {
+            Write-Error "The v0.6.0 zip is $hash, not the audited build."
+            exit 1
+          }
+          Expand-Archive dlss5-wow-sidecar-v0.6.0.zip -DestinationPath base
+
+      - name: Assemble the test bundle
+        shell: pwsh
+        run: |
+          $stage = 'dlss5-live-test'
+          Copy-Item base\dlss5-wow-sidecar $stage -Recurse
+          # The two executables are replaced; the stale build manifest describes
+          # the old ones and goes with them.
+          Copy-Item build\Release\wowsidecar.exe, build\Release\wowsidecar-manager.exe $stage -Force
+          Remove-Item "$stage\BUILD-MANIFEST.json"
+          # testpattern stands in for the game, so the overlay can be tried on a
+          # window that is not WoW at all.
+          Copy-Item build\Release\testpattern.exe $stage
+          New-Item -ItemType Directory "$stage\tests" | Out-Null
+          Copy-Item build\tests\Release\sidecar_tests.exe, build\Release\testpattern.exe "$stage\tests"
+          # See the header: no optical flow in this build, so the neural pass is
+          # asked to run on a zero motion field rather than be skipped.
+          Set-Content "$stage\sidecar.toml" "static_motion = true" -Encoding ascii
+
+          $files = Get-ChildItem $stage -Recurse -File | ForEach-Object {
+            $name = $_.FullName.Substring((Resolve-Path $stage).Path.Length + 1)
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $name
+          }
+          @(
+            "commit $env:GITHUB_SHA"
+            "run    $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            "base   dlss5-wow-sidecar-v0.6.0.zip 6eda271b81b885f35ba1510a9ee016556dea8d55fcc4aadfe17488c8cca3094c"
+            "sdks   DLSS v310.9.16; Optical Flow SDK not included (static_motion = true)"
+            ""
+          ) + $files | Set-Content "$stage\BUILD-INFO.txt" -Encoding utf8
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4
+        with:
+          name: dlss5-live-test
+          path: dlss5-live-test
+          retention-days: 7
+          if-no-files-found: error

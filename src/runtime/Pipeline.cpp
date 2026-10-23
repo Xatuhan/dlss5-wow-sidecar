@@ -231,7 +231,15 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
     GlobalLog().Info("optical flow available, grid size " +
                      std::to_string(config.flowGridSize));
   } else {
-    GlobalLog().Warn("optical flow unavailable; running on a zero motion field");
+    // The old wording said "a zero motion field", but the reshade-hosted pass
+    // falls back to a plain copy when it is handed no motion at all, so nothing
+    // neural ran. static_motion is what makes the zero field real.
+    GlobalLog().Warn(config.staticMotion
+                         ? "optical flow unavailable; static_motion is on, so the "
+                           "neural pass runs on a zero motion field and moving "
+                           "things will smear"
+                         : "optical flow unavailable; the neural pass is skipped "
+                           "(static_motion = true runs it on a zero motion field)");
   }
 
   Pipeline* raw = p.get();
@@ -567,6 +575,16 @@ void Pipeline::RenderLoop() {
       dev_.bridge->Queue()->Signal(dev_.flow->InputFence(), ++dev_.inputFenceValue);
       haveFlow = dev_.flow->Execute(dev_.currentLuma.Get(), dev_.previousLuma.Get(),
                                 dev_.inputFenceValue, flowOut);
+    }
+
+    // No optical flow at all, and the operator asked for the pass regardless.
+    // The motion target is a committed resource, which D3D12 zero-fills, and
+    // nothing writes it unless NVOFA is available -- so here it is an all-zero
+    // field, never last frame's vectors. A flow that exists but missed this
+    // one frame still gets null, as before, for exactly that reason.
+    if (!motion && config_.staticMotion && dev_.motionTarget &&
+        !(dev_.flow && dev_.flow->Available())) {
+      motion = dev_.motionTarget.Get();
     }
 
     // Phase two: consume the flow grid and present. The GPU waits on NVOFA's

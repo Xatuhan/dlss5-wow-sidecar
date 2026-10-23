@@ -23,13 +23,13 @@ constexpr int64_t kMaxMaskEdge = 1 << 20;
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 21> kKnownKeys = {
+constexpr std::array<std::string_view, 22> kKnownKeys = {
     "neural_runtime",
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
     "neural",       "wow_dir",       "language",      "ui_scale",
     "neural_passes", "hotkeys", "theme", "advanced_mode", "client", "wotlk_dir",
-    "disocclusion_fallback", "invert_motion"};
+    "disocclusion_fallback", "invert_motion", "static_motion"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -150,6 +150,7 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
   ReadBool(root, "advanced_mode", config.advancedMode, warnings);
   ReadBool(root, "show_overlay", config.showOverlay, warnings);
   ReadBool(root, "invert_motion", config.invertMotion, warnings);
+  ReadBool(root, "static_motion", config.staticMotion, warnings);
 
   if (const auto node = root.get("flow_grid_size")) {
     const auto value = node->value<int64_t>();
@@ -400,6 +401,7 @@ std::string SerializeConfig(const Config& config) {
   out << "disocclusion_fallback = " << Number(config.disocclusionFallback) << "\n";
   // A diagnostic, so it only appears in the file while someone is using it.
   if (config.invertMotion) out << "invert_motion = true\n";
+  if (config.staticMotion) out << "static_motion = true\n";
   // Omitted while it is still automatic, so the file does not claim a choice
   // nobody made.
   if (config.uiScale > 0.0f) {
@@ -493,6 +495,7 @@ void ResetRenderingSettings(Config& config) {
   config.neuralPasses = defaults.neuralPasses;
   config.disocclusionFallback = defaults.disocclusionFallback;
   config.invertMotion = defaults.invertMotion;
+  config.staticMotion = defaults.staticMotion;
   config.neural = defaults.neural;
 }
 

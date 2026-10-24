@@ -16,3 +16,7 @@ __pycache__/
 *.addon64
 *.addon32
 *.exe
+
+# The NVIDIA Optical Flow SDK is distributed under NVIDIA's own licence behind a
+# developer login, and this fork is public. The archive is kept locally only.
+opticalFlowZIP/

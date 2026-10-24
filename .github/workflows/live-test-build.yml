@@ -1,15 +1,14 @@
 name: Live test build
 
-# Builds this branch in Release configuration against the DLSS SDK and lays
-# the result over the published 0.6.0 bundle, so it can be tried on a real RTX
-# card without anyone assembling it by hand.
+# Builds this branch the way a release is built -- Release configuration, both
+# NVIDIA SDKs required -- and lays the result over the published 0.6.0 bundle,
+# so it can be tried on a real RTX card without anyone assembling it by hand.
 #
-# Built WITHOUT the Optical Flow SDK on purpose: its D3D12 header sits behind
-# an NVIDIA developer login. With no optical flow the pipeline has no motion
-# field, so the bundle ships a sidecar.toml with static_motion = true, which
-# runs the neural pass on a zero field instead of skipping it. Still images are
-# right; anything that moves smears. It proves DLSS 5 runs on the card -- it is
-# not how the game is meant to look.
+# The Optical Flow SDK's D3D12 header sits behind an NVIDIA developer login and
+# its licence forbids redistributing it, so it is never committed: the five
+# NvOFInterface headers travel as an encrypted repository secret, are checked
+# against a recorded SHA-256, used for the build, and deleted from the runner.
+# Secrets are not passed to workflows run for pull requests from other forks.
 #
 # What comes out is an Actions artifact, not a release: it expires, it is not
 # listed anywhere, and nothing here publishes, tags or pushes.
@@ -54,11 +53,51 @@ jobs:
           }
           git -C sdk-dlss sparse-checkout set include lib
 
+      # NVIDIA Optical Flow SDK 5.0.7, NvOFInterface/*.h only, as a base64 zip.
+      # The secret reaches this one step and no other. The digest pins the exact
+      # headers that were reviewed, so a replaced secret stops the build here.
+      - name: Unpack the NVIDIA Optical Flow SDK headers
+        shell: pwsh
+        env:
+          NVOF_INTERFACE_ZIP_B64: ${{ secrets.NVOF_INTERFACE_ZIP_B64 }}
+        run: |
+          if (-not $env:NVOF_INTERFACE_ZIP_B64) {
+            Write-Error "Secret NVOF_INTERFACE_ZIP_B64 is not set. Without the Optical Flow SDK there is no motion field."
+            exit 1
+          }
+          $zip = Join-Path $env:RUNNER_TEMP 'nvof.zip'
+          [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($env:NVOF_INTERFACE_ZIP_B64))
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne '539a55c7bd4fad8a5f4665872ad2be7afcc80a0e67bb681fbecf618225826cc7') {
+            Remove-Item $zip
+            Write-Error "The Optical Flow headers in the secret are not the reviewed ones (SHA-256 $hash)."
+            exit 1
+          }
+          Expand-Archive -Path $zip -DestinationPath sdk-nvof -Force
+          Remove-Item $zip
+          if (-not (Test-Path sdk-nvof\NvOFInterface\nvOpticalFlowD3D12.h)) {
+            Write-Error "The secret does not hold NvOFInterface\nvOpticalFlowD3D12.h."
+            exit 1
+          }
+
+      # SIDECAR_REQUIRE_SDKS turns a missing SDK into a configure error, so this
+      # build cannot quietly come out without optical flow.
       - name: Configure
-        run: cmake -S . -B build -A x64 -DDLSS_SDK_DIR=${{ github.workspace }}/sdk-dlss
+        run: >
+          cmake -S . -B build -A x64
+          -DSIDECAR_REQUIRE_SDKS=ON
+          -DDLSS_SDK_DIR=${{ github.workspace }}/sdk-dlss
+          -DNVOF_SDK_DIR=${{ github.workspace }}/sdk-nvof
 
       - name: Build
         run: cmake --build build --config Release
+
+      # The headers have done their job. Nothing later needs them, and the
+      # artifact step must not be able to pick them up by accident.
+      - name: Remove the Optical Flow headers from the runner
+        if: always()
+        shell: pwsh
+        run: if (Test-Path sdk-nvof) { Remove-Item sdk-nvof -Recurse -Force }
 
       - name: Unit tests
         run: build\tests\Release\sidecar_tests.exe "[unit]"
@@ -95,9 +134,6 @@ jobs:
           Copy-Item build\Release\testpattern.exe $stage
           New-Item -ItemType Directory "$stage\tests" | Out-Null
           Copy-Item build\tests\Release\sidecar_tests.exe, build\Release\testpattern.exe "$stage\tests"
-          # See the header: no optical flow in this build, so the neural pass is
-          # asked to run on a zero motion field rather than be skipped.
-          Set-Content "$stage\sidecar.toml" "static_motion = true" -Encoding ascii
 
           $files = Get-ChildItem $stage -Recurse -File | ForEach-Object {
             $name = $_.FullName.Substring((Resolve-Path $stage).Path.Length + 1)
@@ -107,7 +143,7 @@ jobs:
             "commit $env:GITHUB_SHA"
             "run    $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
             "base   dlss5-wow-sidecar-v0.6.0.zip 6eda271b81b885f35ba1510a9ee016556dea8d55fcc4aadfe17488c8cca3094c"
-            "sdks   DLSS v310.9.16; Optical Flow SDK not included (static_motion = true)"
+            "sdks   DLSS v310.9.16 (9981c63); Optical Flow SDK 5.0.7 NvOFInterface headers (539a55c7)"
             ""
           ) + $files | Set-Content "$stage\BUILD-INFO.txt" -Encoding utf8
 

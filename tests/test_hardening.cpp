@@ -274,7 +274,7 @@ TEST_CASE("a launch check looks only at what a launch loads", "[unit]") {
   Write(dir / "runtimes" / "compatible" / "nvngx_dlssnr.dll", "not a runtime");
   CHECK(VerifyComponents(dir, DigestReuse::Fresh, ComponentScope::LoadedAtLaunch).empty());
   CHECK(Mentions(VerifyComponents(dir, DigestReuse::Fresh, ComponentScope::Everything),
-                 "runtimes\compatible\nvngx_dlssnr.dll"));
+                 "runtimes\\compatible\\nvngx_dlssnr.dll"));
 
   // And whatever was staged beside the executables is checked either way.
   Write(dir / "nvngx_dlssnr.dll", "not a runtime");

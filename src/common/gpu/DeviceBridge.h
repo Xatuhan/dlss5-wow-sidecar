@@ -63,6 +63,13 @@ class DeviceBridge {
   // returned fenceValue before reading the texture.
   std::optional<BridgeFrame> AcquireLatest();
 
+  // Render thread. Signalled by every Publish (auto-reset). Waiting on it
+  // instead of polling with Sleep(1) matters: Sleep rounds up to the system
+  // timer tick, 15.6 ms by default, so a frame published just after the sleep
+  // began sat unseen for most of a frame interval -- latency added to every
+  // frame that arrived while the loop was idle.
+  HANDLE FrameReadyEvent() const { return frameReady_; }
+
  private:
   DeviceBridge() = default;
 
@@ -81,6 +88,7 @@ class DeviceBridge {
   Microsoft::WRL::ComPtr<ID3D12Fence> fence12_;
   std::atomic<bool> sizeMismatchReported_{false};
   HANDLE fenceHandle_ = nullptr;
+  HANDLE frameReady_ = nullptr;
 
   std::array<Slot, kRingDepth> ring_;
   uint32_t writeIndex_ = 0;

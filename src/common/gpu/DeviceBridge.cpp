@@ -27,6 +27,8 @@ std::unique_ptr<DeviceBridge> DeviceBridge::Create(LUID adapterLuid,
   std::unique_ptr<DeviceBridge> b(new DeviceBridge());
   b->width_ = width;
   b->height_ = height;
+  b->frameReady_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  if (!b->frameReady_) return nullptr;
 
   // Both devices are created on the same adapter so shared handles are valid.
   ComPtr<ID3D11Device> dev11;
@@ -93,6 +95,7 @@ DeviceBridge::~DeviceBridge() {
     if (slot.sharedHandle) CloseHandle(slot.sharedHandle);
   }
   if (fenceHandle_) CloseHandle(fenceHandle_);
+  if (frameReady_) CloseHandle(frameReady_);
 }
 
 bool DeviceBridge::Publish(ID3D11Texture2D* src) {
@@ -132,6 +135,7 @@ bool DeviceBridge::Publish(ID3D11Texture2D* src) {
   const int32_t previous = published_.exchange(static_cast<int32_t>(writeIndex_),
                                                std::memory_order_release);
   writeIndex_ = (writeIndex_ + 1) % kRingDepth;
+  SetEvent(frameReady_);
   return previous != -1;
 }
 

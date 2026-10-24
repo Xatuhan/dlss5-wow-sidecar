@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "core/Log.h"
-#include "core/Sha256.h"
+#include "neural/ComponentManifest.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -56,7 +56,9 @@ std::unique_ptr<ReshadeHostedPass> ReshadeHostedPass::Create(
   // creation with a bare 0xbad00001 and nothing else to go on. Refusing it here
   // turns a dead end into one sentence.
   const std::filesystem::path runtime = options.runtimeDir / "nvngx_dlssnr.dll";
-  const std::string digest = Sha256File(runtime);
+  // The overlay hashed every byte of this file moments ago, before the device
+  // existed; reuse that digest unless the file has changed since.
+  const std::string digest = ComponentDigest(runtime, DigestReuse::ReuseUnchanged);
   const auto entry = LookupRuntime(digest);
   // An unrecognised build is refused. It used to be let through on the grounds
   // that it might be a newer NVIDIA release, but this file is native code mapped

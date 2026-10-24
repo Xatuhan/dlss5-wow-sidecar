@@ -198,7 +198,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // is the last point at which an unknown one can still be kept out. (dxgi.dll
   // itself is already loaded by now; for it, this is detection, not prevention,
   // which is why the manager's check is the one that matters.)
-  if (const auto problems = VerifyComponents(ExecutableDirectory()); !problems.empty()) {
+  if (const auto problems = VerifyComponents(ExecutableDirectory(), DigestReuse::Fresh,
+                                             ComponentScope::LoadedAtLaunch);
+      !problems.empty()) {
     std::string why;
     for (const auto& problem : problems) {
       why += "\n" + problem.file + " " + Tr(problem.reason);
@@ -232,9 +234,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   cfg.syntheticDepth = config.syntheticDepth;
   cfg.neuralPasses = config.neuralPasses;
   cfg.disocclusionFallback = config.disocclusionFallback;
-  cfg.invertMotion = config.invertMotion;
-  cfg.staticMotion = config.staticMotion;
-  if (config.invertMotion) {
+  cfg.invertMotion = config.invertMotion;  if (config.invertMotion) {
     GlobalLog().Warn("invert_motion is on: motion vectors are deliberately "
                      "flipped, and moving things will smear. Diagnostic only.");
   }

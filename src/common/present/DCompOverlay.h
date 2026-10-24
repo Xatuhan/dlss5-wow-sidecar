@@ -76,6 +76,7 @@ class DCompOverlay {
   Microsoft::WRL::ComPtr<ID3D12Fence> presentFence_;
   uint64_t presentFenceValue_ = 0;
   HANDLE frameLatencyWaitable_ = nullptr;
+  HANDLE presentDone_ = nullptr;
   PresentTiming timing_;
 };
 

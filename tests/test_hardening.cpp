@@ -264,3 +264,30 @@ TEST_CASE("a status mapping squatted before the overlay starts is not trusted", 
   }
   CloseHandle(squatter);
 }
+
+TEST_CASE("a launch check looks only at what a launch loads", "[unit]") {
+  // The slots are copied out before NGX maps anything, and the copy is checked
+  // beside the executables, so the launch-time scan skips them -- but the full
+  // scan the Checks page runs still sees a bad file sitting in one.
+  const auto dir = ScratchDir("launch-scope");
+  fs::create_directories(dir / "runtimes" / "compatible");
+  Write(dir / "runtimes" / "compatible" / "nvngx_dlssnr.dll", "not a runtime");
+  CHECK(VerifyComponents(dir, DigestReuse::Fresh, ComponentScope::LoadedAtLaunch).empty());
+  CHECK(Mentions(VerifyComponents(dir, DigestReuse::Fresh, ComponentScope::Everything),
+                 "runtimes\compatible\nvngx_dlssnr.dll"));
+
+  // And whatever was staged beside the executables is checked either way.
+  Write(dir / "nvngx_dlssnr.dll", "not a runtime");
+  CHECK(Mentions(VerifyComponents(dir, DigestReuse::Fresh, ComponentScope::LoadedAtLaunch),
+                 "nvngx_dlssnr.dll"));
+  fs::remove_all(dir);
+}
+
+TEST_CASE("a component digest is the file's SHA-256", "[unit]") {
+  const auto dir = ScratchDir("digest");
+  Write(dir / "dxgi.dll", "abc");
+  CHECK(ComponentDigest(dir / "dxgi.dll", DigestReuse::Fresh) == Sha256Hex("abc"));
+  CHECK(ComponentDigest(dir / "dxgi.dll", DigestReuse::ReuseUnchanged) == Sha256Hex("abc"));
+  CHECK(ComponentDigest(dir / "missing.dll", DigestReuse::Fresh).empty());
+  fs::remove_all(dir);
+}

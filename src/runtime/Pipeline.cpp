@@ -231,15 +231,11 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
     GlobalLog().Info("optical flow available, grid size " +
                      std::to_string(config.flowGridSize));
   } else {
-    // The old wording said "a zero motion field", but the reshade-hosted pass
-    // falls back to a plain copy when it is handed no motion at all, so nothing
-    // neural ran. static_motion is what makes the zero field real.
-    GlobalLog().Warn(config.staticMotion
-                         ? "optical flow unavailable; static_motion is on, so the "
-                           "neural pass runs on a zero motion field and moving "
-                           "things will smear"
-                         : "optical flow unavailable; the neural pass is skipped "
-                           "(static_motion = true runs it on a zero motion field)");
+    // The old wording said "running on a zero motion field", but the
+    // reshade-hosted pass is handed no motion at all and falls back to a plain
+    // copy, so nothing neural runs. The log has to say so.
+    GlobalLog().Warn("optical flow unavailable; the neural pass is skipped and "
+                     "frames are passed through unchanged");
   }
 
   Pipeline* raw = p.get();
@@ -519,7 +515,11 @@ void Pipeline::RenderLoop() {
     const auto beginAcquire = Clock::now();
     auto frame = dev_.bridge->AcquireLatest();
     if (!frame) {
-      Sleep(1);
+      // Woken by the next published frame, by the panic hotkey arriving in
+      // this thread's queue, or after 16 ms at most so a stop request is seen.
+      // Sleep(1) used to stand here and rounded up to the 15.6 ms timer tick.
+      const HANDLE ready = dev_.bridge->FrameReadyEvent();
+      MsgWaitForMultipleObjects(1, &ready, FALSE, 16, QS_HOTKEY);
       idleMs += std::chrono::duration<double, std::milli>(Clock::now() - beginAcquire).count();
       continue;
     }
@@ -575,16 +575,6 @@ void Pipeline::RenderLoop() {
       dev_.bridge->Queue()->Signal(dev_.flow->InputFence(), ++dev_.inputFenceValue);
       haveFlow = dev_.flow->Execute(dev_.currentLuma.Get(), dev_.previousLuma.Get(),
                                 dev_.inputFenceValue, flowOut);
-    }
-
-    // No optical flow at all, and the operator asked for the pass regardless.
-    // The motion target is a committed resource, which D3D12 zero-fills, and
-    // nothing writes it unless NVOFA is available -- so here it is an all-zero
-    // field, never last frame's vectors. A flow that exists but missed this
-    // one frame still gets null, as before, for exactly that reason.
-    if (!motion && config_.staticMotion && dev_.motionTarget &&
-        !(dev_.flow && dev_.flow->Available())) {
-      motion = dev_.motionTarget.Get();
     }
 
     // Phase two: consume the flow grid and present. The GPU waits on NVOFA's

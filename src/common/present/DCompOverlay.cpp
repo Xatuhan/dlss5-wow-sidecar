@@ -122,12 +122,14 @@ std::unique_ptr<DCompOverlay> DCompOverlay::Create(DeviceBridge& bridge,
   if (FAILED(dev->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&o->presentFence_)))) {
     return nullptr;
   }
+  o->presentDone_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   return o;
 }
 
 DCompOverlay::~DCompOverlay() {
   Hide();
   if (frameLatencyWaitable_) CloseHandle(frameLatencyWaitable_);
+  if (presentDone_) CloseHandle(presentDone_);
   if (hwnd_) DestroyWindow(hwnd_);
 }
 
@@ -197,10 +199,13 @@ void DCompOverlay::Present(ID3D12Resource* frame, uint64_t waitFenceValue) {
 
   bridge_->Queue()->Signal(presentFence_.Get(), ++presentFenceValue_);
   if (presentFence_->GetCompletedValue() < presentFenceValue_) {
-    HANDLE evt = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    presentFence_->SetEventOnCompletion(presentFenceValue_, evt);
-    WaitForSingleObject(evt, 1000);
-    CloseHandle(evt);
+    // One event for the overlay's life rather than a kernel object created and
+    // destroyed on every frame. If it could not be made, a null event makes
+    // SetEventOnCompletion itself block until the fence is reached.
+    if (SUCCEEDED(presentFence_->SetEventOnCompletion(presentFenceValue_, presentDone_)) &&
+        presentDone_) {
+      WaitForSingleObject(presentDone_, 1000);
+    }
   }
   const auto afterGpu = Clock::now();
 

@@ -3,6 +3,8 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 
+#include <mutex>
+
 using Microsoft::WRL::ComPtr;
 
 namespace sidecar {
@@ -120,23 +122,41 @@ std::optional<GpuInfo> DetectPrimaryGpu() {
 }
 
 std::optional<VideoMemory> QueryVideoMemory(LUID adapter) {
-  ComPtr<IDXGIFactory4> factory;
-  if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) return std::nullopt;
+  // The render thread asks twice a second. Building a DXGI factory and walking
+  // the adapters each time is a millisecond or more of work on the thread that
+  // paces frames, for an answer whose adapter never changes -- so the adapter
+  // is kept, and only looked up again when it stops answering (a driver reset
+  // can retire it) or a different one is asked about.
+  static std::mutex mutex;
+  static LUID cachedLuid{};
+  static ComPtr<IDXGIAdapter3> cached;
 
-  ComPtr<IDXGIAdapter1> adapter1;
-  if (FAILED(factory->EnumAdapterByLuid(adapter, IID_PPV_ARGS(&adapter1)))) {
-    return std::nullopt;
-  }
-  ComPtr<IDXGIAdapter3> adapter3;
-  if (FAILED(adapter1.As(&adapter3))) return std::nullopt;
-
-  // LOCAL is the memory on the card; NON_LOCAL is system memory the driver
-  // falls back to when the card is full. Both are worth having: the first is
-  // what we are using, the second is whether we have already been evicted.
+  std::lock_guard<std::mutex> lock(mutex);
+  const bool sameLuid = cached && cachedLuid.LowPart == adapter.LowPart &&
+                        cachedLuid.HighPart == adapter.HighPart;
   DXGI_QUERY_VIDEO_MEMORY_INFO local{};
-  if (FAILED(adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local))) {
-    return std::nullopt;
+  if (!sameLuid ||
+      FAILED(cached->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local))) {
+    cached.Reset();
+    ComPtr<IDXGIFactory4> factory;
+    if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) return std::nullopt;
+    ComPtr<IDXGIAdapter1> adapter1;
+    if (FAILED(factory->EnumAdapterByLuid(adapter, IID_PPV_ARGS(&adapter1)))) {
+      return std::nullopt;
+    }
+    ComPtr<IDXGIAdapter3> adapter3;
+    if (FAILED(adapter1.As(&adapter3))) return std::nullopt;
+
+    // LOCAL is the memory on the card; NON_LOCAL is system memory the driver
+    // falls back to when the card is full. Both are worth having: the first is
+    // what we are using, the second is whether we have already been evicted.
+    if (FAILED(adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local))) {
+      return std::nullopt;
+    }
+    cached = adapter3;
+    cachedLuid = adapter;
   }
+  IDXGIAdapter3* adapter3 = cached.Get();
   DXGI_QUERY_VIDEO_MEMORY_INFO nonLocal{};
   // A failure here is not fatal; it costs the eviction alarm, not the reading.
   adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &nonLocal);

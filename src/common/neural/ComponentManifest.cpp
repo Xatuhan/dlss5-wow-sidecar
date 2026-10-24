@@ -125,7 +125,12 @@ bool IsKnownComponent(std::string_view fileName, std::string_view sha256Hex) {
   });
 }
 
-std::vector<ComponentProblem> VerifyComponents(const fs::path& folder, DigestReuse reuse) {
+std::string ComponentDigest(const fs::path& path, DigestReuse reuse) {
+  return Digest(path, reuse);
+}
+
+std::vector<ComponentProblem> VerifyComponents(const fs::path& folder, DigestReuse reuse,
+                                               ComponentScope scope) {
   std::vector<ComponentProblem> problems;
 
   const auto scan = [&](const fs::path& dir, const std::string& prefix, bool runtimeSlot) {
@@ -148,6 +153,7 @@ std::vector<ComponentProblem> VerifyComponents(const fs::path& folder, DigestReu
   };
 
   scan(folder, "", false);
+  if (scope == ComponentScope::LoadedAtLaunch) return problems;
   for (const char* slot : {"latest", "compatible"}) {
     scan(folder / "runtimes" / slot, std::string("runtimes\\") + slot + "\\", true);
   }

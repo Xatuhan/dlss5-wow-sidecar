@@ -64,9 +64,6 @@ struct PipelineConfig {
   float disocclusionFallback = 1.0f;
   // Diagnostic flip of the motion vectors. See Config::invertMotion.
   bool invertMotion = false;
-  // Run the neural pass on a zero motion field when there is no optical flow.
-  // See Config::staticMotion.
-  bool staticMotion = false;
   // Where nvngx_*.dll live. Defaults to the executable's own directory.
   std::filesystem::path runtimeDir;
 };

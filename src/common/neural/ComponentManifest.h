@@ -36,14 +36,28 @@ bool IsKnownComponent(std::string_view fileName, std::string_view sha256Hex);
 // runtimes\compatible slots, checked against the allow-list. Empty means the
 // folder holds nothing it should not.
 //
-// Hashing is the cost: the runtimes are 160 and 266 MB. With `reuseDigests` a
+// Hashing is the cost: the runtimes are 160 and 266 MB. With ReuseUnchanged a
 // digest is reused while the file's size and write time are unchanged, which is
-// what lets the manager's Checks page run this on its own thread of control
-// without a half-second stall each time. Both are under the control of whoever
-// can write the file, so the last check before anything is launched passes
-// false and hashes every byte.
+// what lets the manager's Checks page re-run on its UI thread without a stall
+// every time. Both are under the control of whoever can write the file, so the
+// last check before anything is launched uses Fresh and hashes every byte.
 enum class DigestReuse { Fresh, ReuseUnchanged };
-std::vector<ComponentProblem> VerifyComponents(const std::filesystem::path& folder,
-                                               DigestReuse reuse = DigestReuse::Fresh);
+
+// What to look at. A launch only maps what sits beside the executables: the
+// overlay copies the chosen runtime out of its slot before NGX loads it, and
+// that copy is checked like everything else in the folder. So a launch skips
+// the slots -- 420 MB of hashing on Ada, most of it a Blackwell-only runtime
+// that is never loaded -- and the Checks page, which reports on the whole
+// install, looks at them too.
+enum class ComponentScope { Everything, LoadedAtLaunch };
+
+std::vector<ComponentProblem> VerifyComponents(
+    const std::filesystem::path& folder, DigestReuse reuse = DigestReuse::Fresh,
+    ComponentScope scope = ComponentScope::Everything);
+
+// SHA-256 of one file, sharing the digest cache VerifyComponents fills, so a
+// caller that checks a file it has just verified does not hash 160 MB again.
+// Empty when the file cannot be read.
+std::string ComponentDigest(const std::filesystem::path& path, DigestReuse reuse);
 
 }  // namespace sidecar

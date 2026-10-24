@@ -916,7 +916,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // Every byte, here, whatever the Checks page last saw: this is the moment
     // wowsidecar.exe is about to load dxgi.dll from this folder, and by the time
     // it could check that file itself, ReShade's code would already have run.
-    if (const auto problems = VerifyComponents(sidecarDir); !problems.empty()) {
+    if (const auto problems =
+            VerifyComponents(sidecarDir, DigestReuse::Fresh, ComponentScope::LoadedAtLaunch);
+        !problems.empty()) {
       const std::string why = DescribeComponentProblems(problems);
       GlobalLog().Error("overlay not started; unknown files beside the sidecar:\n" + why);
       results = runProbes();
